@@ -2,35 +2,39 @@ import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
 
-from dash import Dash, html, dcc, callback, Output, Input
+from dash import Dash, html, dcc, callback, Output, Input, dash_table
+from component import get_card_component, get_student_score_list
+from utils import get_total_page
+
+PAGE_SIZE = 10
+
+# dash_table set up column 
+TABLE_COLUMN = [
+    {'name': 'id', 'id': 'id'},
+    {'name': 'MathScore', 'id': 'MathScore'},
+    {'name': 'ReadingScore', 'id': 'ReadingScore'},
+    {'name': 'WritingScore', 'id': 'WritingScore'},
+    {'name': 'avg_score', 'id': 'avg_score'},
+]
 
 # load and process the data
 df = pd.read_csv('data/data.csv')
+
+# set average score and row id
+df['avg_score'] = round((df['MathScore'] + df['ReadingScore'] + df['WritingScore'])/3, 2)
+df['id'] = df.index
 avg_math_score = round(df['MathScore'].mean(), 2)
 avg_reading_score = round(df['ReadingScore'].mean(), 2)
 avg_writing_score = round(df['WritingScore'].mean(), 2)
+
+top_100_scores = df.sort_values(by='avg_score', ascending=False).head(100).to_dict('records')
+
 
 #initialize app
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 # create color palette
 color_discrete_sequence = ['#0a9396','#94d2bd','#e9d8a6','#ee9b00', '#ca6702', '#bb3e03', '#ae2012']
-
-# create reusable card component
-def get_card_component(title, data):
-    component = dbc.Col(
-                    dbc.Card(
-                        dbc.CardBody([
-                            html.H4(title),
-                            html.H4(data)
-                        ]), 
-                        color="dark", 
-                        outline=True,
-                        className = 'text-dark',
-                        style={'textAlign': 'center', 'margin-bottom': '20px'}
-                    ),
-                )
-    return component
 
 
 app.layout = html.Div([
@@ -68,7 +72,6 @@ app.layout = html.Div([
     dbc.Row([
         html.H4("Each Score Relationship"),
         dbc.Col(
-
             dcc.Graph(figure=px.scatter(df, x="MathScore", y="WritingScore", color_discrete_sequence=['#94d2bd'])),
         ),
         dbc.Col(
@@ -107,6 +110,15 @@ app.layout = html.Div([
                 dbc.Col(dcc.Graph(figure={}, id="student-categorical-writing-score-distribution")),
                 dbc.Col(dcc.Graph(figure={}, id="student-categorical-reading-score-distribution")),
             ]),
+            dbc.Row(
+                [
+                    html.H4('Top 100 Scores'),
+
+                    # dash bootstrap table and pagination
+                    dbc.Table(id="score-list"),
+                    dbc.Pagination(id="pagination", max_value=get_total_page(PAGE_SIZE, 100), fully_expanded=False),
+                ]
+            )
         ])
     ),
     
@@ -139,6 +151,27 @@ def update_categorical_component(value):
     reading_score_figure = px.box(df, x=value, y="ReadingScore", color_discrete_sequence=['#bb3e03'], title = 'Reading Score Distribution')
 
     return figure, math_score_figure, writing_score_figure, reading_score_figure
+
+@callback(
+    Output('score-list', 'children'),
+    Input('pagination', 'active_page'),
+)
+def update_list_scores(page):
+
+    # convert active_page data to integer and set default value to 1
+    int_page = 1 if not page else int(page)
+    
+    # define filter index range based on active page
+    filter_index_1 = (int_page-1) * PAGE_SIZE
+    filter_index_2 = (int_page) * PAGE_SIZE
+
+    # get data by filter range based on active page number 
+    fitler_scores = top_100_scores[filter_index_1:filter_index_2]
+
+    # load data to dash bootstrap table component
+    table = get_student_score_list(fitler_scores, (filter_index_1 + 1))
+
+    return table
 
 
 if __name__ == '__main__':
